@@ -1,9 +1,13 @@
 package edu.temple.bookshelf;
 
+import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.Message;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentManager;
@@ -11,6 +15,8 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.EditText;
+import android.widget.SeekBar;
+import android.widget.TextView;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -19,16 +25,39 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.URL;
 
-public class MainActivity extends AppCompatActivity implements BookListFragment.BookSelectedInterface {
+import edu.temple.audiobookplayer.AudiobookService;
+
+public class MainActivity extends AppCompatActivity implements BookListFragment.BookSelectedInterface, BookDetailsFragment.MediaControlInterface {
 
     FragmentManager fm;
     BookDetailsFragment bookDetailsFragment;
+    Book currentBook;
+    TextView nowPlayingTextView;
     boolean onePane;
     Library library;
     Fragment current1, current2;
+    Intent serviceIntent;
+    AudiobookService.MediaControlBinder mediaControlBinder;
+    boolean connected;
+    SeekBar bookProgressSeekBar;
 
     private final String SEARCH_URL = "https://kamorris.com/lab/audlib/booksearch.php?search=";
 
+    ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
+            mediaControlBinder = (AudiobookService.MediaControlBinder) iBinder;
+            mediaControlBinder.setProgressHandler(progressHandler);
+            connected = true;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName componentName) {
+            connected = false;
+        }
+    };
+
+    // Handler to receive downloaded books
     Handler bookHandler = new Handler(new Handler.Callback() {
         @Override
         public boolean handleMessage(Message message) {
@@ -50,10 +79,32 @@ public class MainActivity extends AppCompatActivity implements BookListFragment.
         }
     });
 
+    //Handler to receive book progress updates
+    Handler progressHandler = new Handler(new Handler.Callback() {
+
+        @Override
+        public boolean handleMessage(Message message) {
+
+            if (message.obj != null) {
+                currentBook = library.getBookWithId(((AudiobookService.BookProgress) message.obj).getBookId());
+                nowPlayingTextView.setText(String.format(getString(R.string.now_playing), currentBook.getTitle()));
+                int progress = ((AudiobookService.BookProgress) message.obj).getProgress();
+                bookProgressSeekBar.setProgress((int) ((float) progress / currentBook.getDuration() * bookProgressSeekBar.getMax()));
+            } else {
+                bookProgressSeekBar.setProgress(0);
+                nowPlayingTextView.setText(R.string.nothing_playing);
+            }
+            return true;
+        }
+    });
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        serviceIntent = new Intent (this, AudiobookService.class);
+        bindService(serviceIntent, serviceConnection, BIND_AUTO_CREATE);
 
         fm = getSupportFragmentManager();
         library = new Library();
@@ -70,7 +121,23 @@ public class MainActivity extends AppCompatActivity implements BookListFragment.
             updateDisplay();
         }
 
+        nowPlayingTextView = findViewById(R.id.nowPlayingTextView);
         findViewById(R.id.searchButton).setOnClickListener(v -> fetchBooks(((EditText) findViewById(R.id.searchBox)).getText().toString()));
+        findViewById(R.id.pauseButton).setOnClickListener(v -> pause());
+        findViewById(R.id.stopButton).setOnClickListener(v -> stop());
+        bookProgressSeekBar = findViewById(R.id.bookProgressSeekBar);
+
+        bookProgressSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int i, boolean byUser) {
+                if (byUser && connected) {
+                    mediaControlBinder.seekTo((int) (((float) i / seekBar.getMax()) * currentBook.getDuration()));
+                }
+            }
+
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
     }
 
     private void setUpDisplay() {
@@ -93,7 +160,7 @@ public class MainActivity extends AppCompatActivity implements BookListFragment.
     }
 
     private void updateDisplay () {
-        Fragment tmpFragment = current1;;
+        Fragment tmpFragment = current1;
         library = ((Displayable) current1).getBooks();
         if (onePane) {
             if (current1 instanceof BookListFragment) {
@@ -182,4 +249,30 @@ public class MainActivity extends AppCompatActivity implements BookListFragment.
         }.start();
     }
 
+    @Override
+    public void play(int bookId) {
+        if (connected) {
+            currentBook = library.getBookWithId(bookId);
+            // Start service when playing to ensure the book
+            // plays continuously, even when activity restarts
+            startService(serviceIntent);
+            mediaControlBinder.play(bookId);
+        }
+    }
+
+    public void stop () {
+        mediaControlBinder.stop();
+        // Service will now stop once the activity unbinds
+        stopService(serviceIntent);
+    }
+
+    public void pause () {
+        mediaControlBinder.pause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unbindService(serviceConnection);
+    }
 }

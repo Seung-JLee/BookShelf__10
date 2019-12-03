@@ -32,6 +32,16 @@ public class Library implements Parcelable {
         return books.get(position);
     }
 
+    public Book getBookWithId(int id) {
+     Book book = null;
+
+     for (Book nextBook : books) {
+         if (nextBook.getId() == id)
+             return nextBook;
+     }
+     return null;
+    }
+
     public void addBook(Book book) {
         books.add(book);
     }

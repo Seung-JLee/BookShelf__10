@@ -14,13 +14,12 @@
 
     <TextView
         android:id="@+id/titleTextView"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:shadowColor="#FF0202"
-        android:shadowRadius="10"
         android:shadowDx="2"
         android:shadowDy="2"
-        android:text="Book Title"
+        android:shadowRadius="10"
         android:textAlignment="center"
         android:textColor="@android:color/black"
         android:textSize="32sp"
@@ -33,15 +32,21 @@
 
     <TextView
         android:id="@+id/authorTextView"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_margin="50dp"
         android:shadowColor="#FF0202"
-        android:shadowRadius="20"
         android:shadowDx="10"
         android:shadowDy="10"
-        android:text="Author"
+        android:shadowRadius="20"
         android:textColor="@android:color/black"
         android:textSize="20sp" />
+
+    <ImageButton
+        android:id="@+id/playButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:src="@android:drawable/ic_media_play" />
 
 </FrameLayout>
